@@ -193,6 +193,8 @@ class HealthConnect {
      * @param type a string key that should exist in RECORDS_TYPE_NAME_MAP.
      * @param start an ISO-8601 string representing the start time (e.g. "2023-01-01T00:00:00Z").
      * @param end an ISO-8601 string representing the end time.
+     * @param pageSize the maximum number of records to retrieve per page.
+     * @param pageToken optional page token. If null, automatic pagination will be used to retrieve all records.
      * @return a JSObject containing the list of records under the "records" key.
      */
     suspend fun readRecords(context: Context, type: String, start: String, end: String, pageSize: Int?, pageToken: String? = null): JSObject {
@@ -204,6 +206,7 @@ class HealthConnect {
         Log.d("HealthConnect", "Date range: $start to $end")
         Log.d("HealthConnect", "Parsed start: $startInstant")
         Log.d("HealthConnect", "Parsed end: $endInstant")
+        Log.d("HealthConnect", "Page token provided: ${pageToken != null}")
         
         // Look up the record class from the map. We expect RECORDS_TYPE_NAME_MAP to map 'type' to a Class<out Record>.
         val recordType = RECORDS_TYPE_NAME_MAP[type] ?: throw IllegalArgumentException("Unexpected RecordType: $type")
@@ -223,7 +226,28 @@ class HealthConnect {
             throw SecurityException("Permission not granted for record type: $type. Required permission: $requiredPermission")
         }
         
-        // Build a read records request.
+        // If pageToken is provided, use manual pagination (existing behavior)
+        if (pageToken != null) {
+            Log.d("HealthConnect", "Using manual pagination with token: $pageToken")
+            return readRecordsPage(client, recordType, startInstant, endInstant, pageSize, pageToken)
+        }
+        
+        // If no pageToken is provided, use automatic pagination to get all records
+        Log.d("HealthConnect", "Using automatic pagination to retrieve all records")
+        return readAllRecords(client, recordType, startInstant, endInstant, pageSize ?: 1000)
+    }
+    
+    /**
+     * Reads a single page of records with the given page token.
+     */
+    private suspend fun readRecordsPage(
+        client: HealthConnectClient,
+        recordType: KClass<out Record>,
+        startInstant: Instant,
+        endInstant: Instant,
+        pageSize: Int?,
+        pageToken: String
+    ): JSObject {
         val request = ReadRecordsRequest(
             recordType = recordType,
             timeRangeFilter = TimeRangeFilter.between(startInstant, endInstant),
@@ -231,20 +255,66 @@ class HealthConnect {
             pageToken = pageToken
         )
         
-        Log.d("HealthConnect", "Executing read request...")
-        // Execute the query.
+        Log.d("HealthConnect", "Executing single page read request...")
         val response = client.readRecords(request)
         
-        Log.d("HealthConnect", "Retrieved ${response.records.size} records")
+        Log.d("HealthConnect", "Retrieved ${response.records.size} records for single page")
         
         val recordsArray = com.getcapacitor.JSArray()
-        // Use the separate converter file to convert each record.
         response.records.forEach { record ->
             recordsArray.put(convertRecordToJson(record))
         }
+        
         val result = JSObject()
         result.put("records", recordsArray)
         result.put("nextPageToken", response.pageToken)
+        return result
+    }
+    
+    /**
+     * Reads all records by automatically handling pagination.
+     */
+    private suspend fun readAllRecords(
+        client: HealthConnectClient,
+        recordType: KClass<out Record>,
+        startInstant: Instant,
+        endInstant: Instant,
+        pageSize: Int
+    ): JSObject {
+        val allRecords = mutableListOf<Record>()
+        var currentPageToken: String? = null
+        var totalPages = 0
+        
+        do {
+            totalPages++
+            Log.d("HealthConnect", "Fetching page $totalPages with token: $currentPageToken")
+            
+            val request = ReadRecordsRequest(
+                recordType = recordType,
+                timeRangeFilter = TimeRangeFilter.between(startInstant, endInstant),
+                pageSize = pageSize,
+                pageToken = currentPageToken
+            )
+            
+            val response = client.readRecords(request)
+            Log.d("HealthConnect", "Page $totalPages: Retrieved ${response.records.size} records")
+            
+            allRecords.addAll(response.records)
+            currentPageToken = response.pageToken
+            
+            // Break if we've reached the end (pageToken is null or empty)
+        } while (currentPageToken != null && currentPageToken.isNotEmpty())
+        
+        Log.d("HealthConnect", "Automatic pagination complete. Total pages: $totalPages, Total records: ${allRecords.size}")
+        
+        val recordsArray = com.getcapacitor.JSArray()
+        allRecords.forEach { record ->
+            recordsArray.put(convertRecordToJson(record))
+        }
+        
+        val result = JSObject()
+        result.put("records", recordsArray)
+        // Don't include nextPageToken for automatic pagination since all records are returned
         return result
     }
 }
