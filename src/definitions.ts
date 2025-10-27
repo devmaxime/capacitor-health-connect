@@ -24,11 +24,26 @@ export interface HealthConnectPlugin {
     pageSize?: number;
     pageToken?: string;
   }): Promise<ReadRecordsResponse>;
+
+  /**
+   * Aggregates records of the specified type within a time range.
+   * Returns aggregated data grouped by the specified time period (e.g., daily totals).
+   */
+  aggregateRecords(options: {
+    start: string;
+    end: string;
+    type: AggregateRecordType;
+    groupBy?: AggregateGroupBy;
+  }): Promise<AggregateResponse>;
 }
 
 export type HealthConnectAvailability = 'Available' | 'NotSupported' | 'NotInstalled';
 
 export type RecordType = 'Steps' | 'Weight' | 'ActivitySession' | 'SleepSession' | 'RestingHeartRate';
+
+export type AggregateRecordType = 'Steps' | 'Distance' | 'TotalCaloriesBurned' | 'ActiveCaloriesBurned' | 'HeartRate';
+
+export type AggregateGroupBy = 'day' | 'hour' | 'week' | 'month';
 
 /**
  * Response from reading health records.
@@ -47,4 +62,22 @@ export interface ReadRecordsResponse {
 export interface PermissionsResponse {
   read: RecordType[];
   write: RecordType[];
+}
+
+/**
+ * Response from aggregating health records.
+ * Contains aggregated data grouped by time periods.
+ */
+export interface AggregateResponse {
+  aggregates: AggregateData[];
+}
+
+/**
+ * Aggregated data for a specific time period.
+ */
+export interface AggregateData {
+  startTime: string;
+  endTime: string;
+  value: number;
+  unit?: string;
 }

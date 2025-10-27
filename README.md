@@ -60,6 +60,7 @@ You also need to add permissions for the records you want to read and/or write t
 * [`getGrantedPermissions()`](#getgrantedpermissions)
 * [`revokePermissions()`](#revokepermissions)
 * [`readRecords(...)`](#readrecords)
+* [`aggregateRecords(...)`](#aggregaterecords)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
 
@@ -138,6 +139,24 @@ results is returned along with a nextPageToken for retrieving subsequent pages.
 --------------------
 
 
+### aggregateRecords(...)
+
+```typescript
+aggregateRecords(options: { start: string; end: string; type: AggregateRecordType; groupBy?: AggregateGroupBy; }) => Promise<AggregateResponse>
+```
+
+Aggregates records of the specified type within a time range.
+Returns aggregated data grouped by the specified time period (e.g., daily totals).
+
+| Param         | Type                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`options`** | <code>{ start: string; end: string; type: <a href="#aggregaterecordtype">AggregateRecordType</a>; groupBy?: <a href="#aggregategroupby">AggregateGroupBy</a>; }</code> |
+
+**Returns:** <code>Promise&lt;<a href="#aggregateresponse">AggregateResponse</a>&gt;</code>
+
+--------------------
+
+
 ### Interfaces
 
 
@@ -165,6 +184,28 @@ the token for the next page, or undefined if this is the last page.
 | **`nextPageToken`** | <code>string</code> |
 
 
+#### AggregateResponse
+
+Response from aggregating health records.
+Contains aggregated data grouped by time periods.
+
+| Prop             | Type                         |
+| ---------------- | ---------------------------- |
+| **`aggregates`** | <code>AggregateData[]</code> |
+
+
+#### AggregateData
+
+Aggregated data for a specific time period.
+
+| Prop            | Type                |
+| --------------- | ------------------- |
+| **`startTime`** | <code>string</code> |
+| **`endTime`**   | <code>string</code> |
+| **`value`**     | <code>number</code> |
+| **`unit`**      | <code>string</code> |
+
+
 ### Type Aliases
 
 
@@ -176,6 +217,16 @@ the token for the next page, or undefined if this is the last page.
 #### RecordType
 
 <code>'Steps' | 'Weight' | 'ActivitySession' | 'SleepSession' | 'RestingHeartRate'</code>
+
+
+#### AggregateRecordType
+
+<code>'Steps' | 'Distance' | 'TotalCaloriesBurned' | 'ActiveCaloriesBurned' | 'HeartRate'</code>
+
+
+#### AggregateGroupBy
+
+<code>'day' | 'hour' | 'week' | 'month'</code>
 
 </docgen-api>
 

@@ -6,9 +6,20 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.impl.converters.datatype.RECORDS_TYPE_NAME_MAP
 import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.response.ReadRecordsResponse
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.aggregate.AggregationResult
+import java.time.Duration
+import java.time.ZoneOffset
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import com.getcapacitor.JSObject
 import java.time.Instant
 import kotlin.reflect.KClass
@@ -315,6 +326,146 @@ class HealthConnect {
         val result = JSObject()
         result.put("records", recordsArray)
         // Don't include nextPageToken for automatic pagination since all records are returned
+        return result
+    }
+
+    /**
+     * Aggregates records of the given type between start and end times, grouped by the specified period.
+     *
+     * @param context the Android context.
+     * @param type a string representing the aggregate type (e.g., "Steps", "Distance").
+     * @param start an ISO-8601 string representing the start time.
+     * @param end an ISO-8601 string representing the end time.
+     * @param groupBy the time period to group by: "day", "hour", "week", or "month". Defaults to "day".
+     * @return a JSObject containing the list of aggregated data under the "aggregates" key.
+     */
+    suspend fun aggregateRecords(context: Context, type: String, start: String, end: String, groupBy: String?): JSObject {
+        val startInstant = Instant.parse(start)
+        val endInstant = Instant.parse(end)
+        val groupByPeriod = groupBy ?: "day"
+        
+        Log.d("HealthConnect", "Aggregating records for type: $type")
+        Log.d("HealthConnect", "Date range: $start to $end")
+        Log.d("HealthConnect", "Group by: $groupByPeriod")
+        
+        val client = HealthConnectClient.getOrCreate(context)
+        
+        // Determine the time period duration based on groupBy
+        val periodDuration = when (groupByPeriod.lowercase()) {
+            "hour" -> Duration.ofHours(1)
+            "day" -> Duration.ofDays(1)
+            "week" -> Duration.ofDays(7)
+            "month" -> Duration.ofDays(30) // Approximation
+            else -> Duration.ofDays(1)
+        }
+        
+        val aggregatesArray = JSArray()
+        var currentStart = startInstant
+        
+        // Iterate through time periods and aggregate for each
+        while (currentStart.isBefore(endInstant)) {
+            var currentEnd = currentStart.plus(periodDuration)
+            if (currentEnd.isAfter(endInstant)) {
+                currentEnd = endInstant
+            }
+            
+            try {
+                val aggregateResult = when (type) {
+                    "Steps" -> {
+                        val request = AggregateRequest(
+                            metrics = setOf(StepsRecord.COUNT_TOTAL),
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd)
+                        )
+                        val response = client.aggregate(request)
+                        val total = response[StepsRecord.COUNT_TOTAL] ?: 0L
+                        
+                        val obj = JSObject()
+                        obj.put("startTime", currentStart.toString())
+                        obj.put("endTime", currentEnd.toString())
+                        obj.put("value", total)
+                        obj.put("unit", "steps")
+                        obj
+                    }
+                    "Distance" -> {
+                        val request = AggregateRequest(
+                            metrics = setOf(DistanceRecord.DISTANCE_TOTAL),
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd)
+                        )
+                        val response = client.aggregate(request)
+                        val total = response[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0
+                        
+                        val obj = JSObject()
+                        obj.put("startTime", currentStart.toString())
+                        obj.put("endTime", currentEnd.toString())
+                        obj.put("value", total)
+                        obj.put("unit", "meters")
+                        obj
+                    }
+                    "TotalCaloriesBurned" -> {
+                        val request = AggregateRequest(
+                            metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd)
+                        )
+                        val response = client.aggregate(request)
+                        val total = response[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0
+                        
+                        val obj = JSObject()
+                        obj.put("startTime", currentStart.toString())
+                        obj.put("endTime", currentEnd.toString())
+                        obj.put("value", total)
+                        obj.put("unit", "kcal")
+                        obj
+                    }
+                    "ActiveCaloriesBurned" -> {
+                        val request = AggregateRequest(
+                            metrics = setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL),
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd)
+                        )
+                        val response = client.aggregate(request)
+                        val total = response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
+                        
+                        val obj = JSObject()
+                        obj.put("startTime", currentStart.toString())
+                        obj.put("endTime", currentEnd.toString())
+                        obj.put("value", total)
+                        obj.put("unit", "kcal")
+                        obj
+                    }
+                    "HeartRate" -> {
+                        val request = AggregateRequest(
+                            metrics = setOf(HeartRateRecord.BPM_AVG, HeartRateRecord.BPM_MIN, HeartRateRecord.BPM_MAX),
+                            timeRangeFilter = TimeRangeFilter.between(currentStart, currentEnd)
+                        )
+                        val response = client.aggregate(request)
+                        val avg = response[HeartRateRecord.BPM_AVG] ?: 0L
+                        val min = response[HeartRateRecord.BPM_MIN] ?: 0L
+                        val max = response[HeartRateRecord.BPM_MAX] ?: 0L
+                        
+                        val obj = JSObject()
+                        obj.put("startTime", currentStart.toString())
+                        obj.put("endTime", currentEnd.toString())
+                        obj.put("value", avg)
+                        obj.put("min", min)
+                        obj.put("max", max)
+                        obj.put("unit", "bpm")
+                        obj
+                    }
+                    else -> throw IllegalArgumentException("Unsupported aggregate type: $type")
+                }
+                
+                aggregatesArray.put(aggregateResult)
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "Error aggregating for period $currentStart to $currentEnd: ${e.message}")
+                // Continue with next period even if one fails
+            }
+            
+            currentStart = currentEnd
+        }
+        
+        Log.d("HealthConnect", "Aggregation complete. Total periods: ${aggregatesArray.length()}")
+        
+        val result = JSObject()
+        result.put("aggregates", aggregatesArray)
         return result
     }
 }

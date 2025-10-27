@@ -169,4 +169,36 @@ class HealthConnectPlugin : Plugin() {
             }
         }
     }
+
+    /**
+     * Aggregates records of the given type between start and end times.
+     * Expects parameters: "type" (String), "start" (ISO 8601 String), "end" (ISO 8601 String), 
+     * and optional "groupBy" (String: "day", "hour", "week", "month").
+     */
+    @PluginMethod
+    fun aggregateRecords(call: PluginCall) {
+        val type = call.getString("type")
+        val start = call.getString("start")
+        val end = call.getString("end")
+        val groupBy = call.getString("groupBy")
+        
+        if (type == null || start == null || end == null) {
+            call.reject("Missing parameters: 'type', 'start', and 'end' are required")
+            return
+        }
+        
+        // Launch a coroutine to run the suspend function.
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val result = implementation.aggregateRecords(context, type, start, end, groupBy)
+                withContext(Dispatchers.Main) {
+                    call.resolve(result)
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    call.reject(e.message)
+                }
+            }
+        }
+    }
 }
